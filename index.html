@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ABF CLUB RADIO</title>
+  <title>ABF CLUB RADIO – Official clubbing webradio from RadioABF.com</title>
   <meta name="description" content="ABF CLUB RADIO – Official clubbing webradio from RadioABF.com." />
+
+  <!-- Dynamic favicon -->
+  <link id="dynamicFavicon" rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAK0lEQVR42mP8z/D/PwMDA8NARQYGBgYGhjEwMDAwYBgGE0EAAKxSBQm+2Z0AAAAASUVORK5CYII=" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,7 +20,13 @@
       --neon-purple:#8a5cff;
       --text:#e8f7ff;
       --muted:#8fa3b0;
-      --beat:0;          /* 0..1 (set by analyser when available) */
+
+      /* Audio-driven */
+      --beat:0;          /* 0..1 (overall energy) */
+      --kick:0;          /* 0..1 (bass transient) */
+      --hue:0;           /* 0..360 (color drift) */
+
+      /* Layout */
       --player-h:220px;  /* auto-updated by JS */
     }
 
@@ -29,22 +38,96 @@
       color:var(--text);
       min-height:100vh;
       overflow-x:hidden;
-      /* Spacer element handles the fixed player height */
       padding-bottom: env(safe-area-inset-bottom);
     }
 
+    /* Base ambient */
     body::before{
       content:"";
       position:fixed;
       inset:0;
-      z-index:-1;
+      z-index:-2;
       background:
-        radial-gradient(circle at center,rgba(60,207,255,.08),transparent 60%),
-        radial-gradient(circle at 30% 70%,rgba(138,92,255,.08),transparent 60%);
-      animation:pulseBg 6s infinite alternate;
+        radial-gradient(circle at center,rgba(60,207,255,.10),transparent 60%),
+        radial-gradient(circle at 30% 70%,rgba(138,92,255,.10),transparent 60%),
+        repeating-radial-gradient(circle at center, rgba(255,255,255,.02) 0 1px, transparent 1px 6px);
+      animation:pulseBg 8s infinite alternate;
     }
 
-    @keyframes pulseBg{from{opacity:.6}to{opacity:1}}
+    @keyframes pulseBg{
+      from{opacity:.55; filter:hue-rotate(0deg)}
+      to{opacity:1; filter:hue-rotate(20deg)}
+    }
+
+    /* FULL CLUB: moving lasers + scanlines (beat-synced + color drift) */
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:-1;
+      pointer-events:none;
+      background:
+        /* diagonal laser sweep */
+        linear-gradient(115deg,
+          transparent 0%,
+          hsla(calc(200 + (var(--beat) * 80)),100%,60%,.18) 18%,
+          transparent 36%,
+          hsla(calc(270 + (var(--beat) * 60)),100%,65%,.16) 54%,
+          transparent 72%),
+        /* scanlines */
+        repeating-linear-gradient(180deg, rgba(255,255,255,.04) 0px, rgba(255,255,255,.04) 1px, transparent 3px, transparent 7px);
+      mix-blend-mode: screen;
+      opacity: calc(.14 + (var(--beat) * .16) + (var(--kick) * .12));
+      transform: translate3d(0,0,0);
+      filter: hue-rotate(calc(var(--hue) * 1deg)) saturate(1.15);
+      animation: lasers 10s linear infinite;
+    }
+
+    @keyframes lasers{
+      0%{ transform: translate3d(-10%, -3%, 0) rotate(0deg); }
+      50%{ transform: translate3d(10%, 3%, 0) rotate(0.6deg); }
+      100%{ transform: translate3d(-10%, -3%, 0) rotate(0deg); }
+    }
+
+    /* Film grain */
+    .grain-layer{
+      position:fixed;
+      inset:-30px;
+      pointer-events:none;
+      z-index:4;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/></filter><rect width="160" height="160" filter="url(%23n)" opacity="0.25"/></svg>');
+      opacity:.10;
+      mix-blend-mode: overlay;
+      animation: grain 6s steps(10) infinite;
+    }
+
+    @keyframes grain{
+      0%{ transform: translate3d(0,0,0); }
+      10%{ transform: translate3d(-2%, -1%, 0); }
+      20%{ transform: translate3d(-4%, 2%, 0); }
+      30%{ transform: translate3d(3%, -3%, 0); }
+      40%{ transform: translate3d(1%, 4%, 0); }
+      50%{ transform: translate3d(-3%, 1%, 0); }
+      60%{ transform: translate3d(4%, 0%, 0); }
+      70%{ transform: translate3d(0%, -4%, 0); }
+      80%{ transform: translate3d(-1%, 3%, 0); }
+      90%{ transform: translate3d(2%, -2%, 0); }
+      100%{ transform: translate3d(0,0,0); }
+    }
+
+    /* Kick strobe: subtle flash on bass transients */
+    .strobe-layer{
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:5;
+      background:
+        radial-gradient(circle at 50% 40%, rgba(60,207,255,.40), transparent 62%),
+        radial-gradient(circle at 60% 60%, rgba(138,92,255,.22), transparent 65%);
+      opacity: calc(var(--kick) * .22);
+      transition: opacity 60ms linear;
+      mix-blend-mode: screen;
+    }
 
     header{padding:56px 20px 34px;text-align:center}
 
@@ -168,10 +251,9 @@
         0 -18px 65px rgba(0,0,0,.78),
         0 0 calc(22px + (var(--beat) * 30px)) rgba(60,207,255,.18);
       backdrop-filter: blur(10px);
-      z-index:50;
+      z-index:60;
     }
 
-    /* Inner console panel */
     .player-top{
       display:flex;
       align-items:center;
@@ -218,7 +300,6 @@
       z-index:1;
     }
 
-    /* Player beat-synced mini logo */
     .player-logo{
       width:36px;height:36px;flex:0 0 auto;
       transform:scale(calc(1 + var(--beat) * 0.10));
@@ -240,7 +321,6 @@
       z-index:1;
     }
 
-    /* Console modules */
     .controls, .stream-select{
       display:flex;
       align-items:center;
@@ -254,7 +334,6 @@
         0 0 calc(10px + (var(--beat) * 14px)) rgba(60,207,255,.10);
     }
 
-    /* Knob / button feel */
     .btn{
       width:40px;height:40px;border-radius:50%;cursor:pointer;
       border:1px solid rgba(60,207,255,.55);
@@ -278,7 +357,6 @@
     .btn:active{transform:translateY(0px) scale(.98)}
     .btn.playing{box-shadow:0 0 30px rgba(138,92,255,1), 0 14px 22px rgba(0,0,0,.55);border-color:rgba(138,92,255,.75);color:var(--neon-purple)}
 
-    /* Volume = console fader */
     .volume{
       -webkit-appearance:none;
       width:110px;
@@ -309,7 +387,7 @@
     }
 
     /* Visualizer as a slim VU strip */
-    canvas{
+    #visualizer{
       height:24px;
       width:100%;
       border-radius:14px;
@@ -333,6 +411,66 @@
       letter-spacing:1px;
     }
 
+    /* CLUB SCREEN (Fullscreen party mode) */
+    .club-screen-overlay{
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      pointer-events: none;
+    }
+
+    body.club-screen .club-screen-overlay{ display: flex; }
+
+    body.club-screen header,
+    body.club-screen main{
+      opacity: 0;
+      transform: scale(.98);
+      pointer-events: none;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+
+    .club-stage{
+      width: min(980px, 96vw);
+      display: grid;
+      gap: 18px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .club-title{
+      font-size: clamp(1.4rem, 4vw, 2.4rem);
+      letter-spacing: 6px;
+      color: var(--neon-blue);
+      text-shadow: 0 0 18px rgba(60,207,255,.85), 0 0 60px rgba(138,92,255,.35);
+      filter: hue-rotate(calc(var(--hue) * 1deg));
+    }
+
+    .club-now{
+      font-size: clamp(1rem, 2.7vw, 1.35rem);
+      color: rgba(232,247,255,.90);
+      text-shadow: 0 0 12px rgba(60,207,255,.35);
+      max-width: 70ch;
+    }
+
+    .club-logo{
+      width: min(360px, 70vw);
+      transform: scale(calc(1 + var(--beat) * .14));
+      filter: drop-shadow(0 0 calc(18px + var(--beat) * 48px) rgba(60,207,255,.9)) hue-rotate(calc(var(--hue) * 1deg));
+    }
+
+    #clubViz{
+      width: min(980px, 96vw);
+      height: 180px;
+      border-radius: 22px;
+      background: rgba(0,0,0,.22);
+      border: 1px solid rgba(255,255,255,.07);
+      box-shadow: 0 0 0 1px rgba(60,207,255,.10) inset, 0 0 55px rgba(60,207,255,.10);
+    }
+
     @media(max-width:700px){
       header{padding:46px 16px 32px}
       .logo-wrap{width:150px;margin-bottom:18px}
@@ -342,10 +480,40 @@
       .controls, .stream-select{justify-content:space-between}
       .volume{width:100%}
       .stream-select select{width:100%}
+
+      #clubViz{ height: 140px; }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      body::after{ animation: none; }
+      .grain-layer{ animation: none; }
+      .logo-ring{ animation: none; }
     }
   </style>
 </head>
 <body>
+  <div class="grain-layer" aria-hidden="true"></div>
+  <div class="strobe-layer" aria-hidden="true"></div>
+
+  <!-- CLUB SCREEN overlay (shown in fullscreen / club mode) -->
+  <div id="clubScreen" class="club-screen-overlay" aria-hidden="true">
+    <div class="club-stage">
+      <svg class="club-logo" viewBox="0 0 200 200" aria-hidden="true">
+        <defs>
+          <linearGradient id="lgClub" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3ccfff" />
+            <stop offset="1" stop-color="#8a5cff" />
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(60,207,255,.25)" stroke-width="2" />
+        <circle class="logo-ring" cx="100" cy="100" r="74" fill="none" stroke="url(#lgClub)" stroke-width="10" stroke-linecap="round" />
+        <path id="waveClub" class="waveform" d="M40 100 L160 100" />
+      </svg>
+      <div class="club-title">ABF CLUB RADIO</div>
+      <div id="clubNow" class="club-now">Live – ABF CLUB RADIO</div>
+      <canvas id="clubViz"></canvas>
+    </div>
+  </div>
 
 <header id="top">
   <div class="logo-wrap" aria-hidden="true">
@@ -388,7 +556,6 @@
   </section>
 </main>
 
-<!-- Spacer so the last content is never hidden behind the fixed player -->
 <div class="bottom-spacer" aria-hidden="true"></div>
 
 <div class="player" id="player">
@@ -414,6 +581,7 @@
 
     <div class="player-right">
       <div class="controls">
+        <button id="fullBtn" class="btn" aria-label="Fullscreen / Club Screen">⛶</button>
         <button id="playBtn" class="btn" aria-label="Play / Pause">▶</button>
         <button id="muteBtn" class="btn" aria-label="Mute">🔊</button>
         <input id="volume" class="volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
@@ -444,6 +612,7 @@
   // ===== Elements =====
   var root = document.documentElement;
   var audio = document.getElementById('audio');
+  var fullBtn = document.getElementById('fullBtn');
   var playBtn = document.getElementById('playBtn');
   var muteBtn = document.getElementById('muteBtn');
   var volume = document.getElementById('volume');
@@ -451,24 +620,28 @@
   var nowPlayingEl = document.getElementById('nowPlaying');
   var playerTitleEl = document.getElementById('playerTitle');
   var recentTracksEl = document.getElementById('recentTracks');
+
   var canvas = document.getElementById('visualizer');
   var c = canvas.getContext('2d');
 
-  // SVG waveform paths (unique ids)
+  // Club screen canvas
+  var clubNowEl = document.getElementById('clubNow');
+  var clubCanvas = document.getElementById('clubViz');
+  var clubC = clubCanvas ? clubCanvas.getContext('2d') : null;
+
+  // SVG waveform paths
   var waveHeaderEl = document.getElementById('waveHeader');
   var wavePlayerEl = document.getElementById('wavePlayer');
+  var waveClubEl = document.getElementById('waveClub');
 
-  // Status
   var statusEl = document.getElementById('playerStatus');
-  function setStatus(msg){
-    if(statusEl) statusEl.textContent = String(msg || '').toUpperCase();
-  }
+  function setStatus(msg){ if(statusEl) statusEl.textContent = String(msg || '').toUpperCase(); }
 
   // ===== Layout helper: ensure full scroll with fixed player =====
   function updatePlayerHeight(){
     var p = document.getElementById('player');
     if(!p) return;
-    var h = p.offsetHeight + 24; // include glow buffer
+    var h = p.offsetHeight + 24;
     document.documentElement.style.setProperty('--player-h', h + 'px');
   }
 
@@ -476,23 +649,24 @@
   function assert(cond, msg){ if(!cond){ console.error('ABF test failed:', msg); } }
   function runSelfTests(){
     assert(!!audio, 'audio element missing');
-    assert(!!playBtn && !!muteBtn && !!volume && !!select, 'player controls missing');
+    assert(!!fullBtn && !!playBtn && !!muteBtn && !!volume && !!select, 'player controls missing');
     assert(!!nowPlayingEl && !!playerTitleEl && !!recentTracksEl, 'metadata elements missing');
-    assert(!!waveHeaderEl && !!wavePlayerEl, 'waveform svg path missing');
+    assert(!!waveHeaderEl && !!wavePlayerEl && !!waveClubEl, 'waveform svg path missing');
+    assert(!!canvas && !!clubCanvas, 'visualizer canvas missing');
 
-    var ids = ['audio','playBtn','muteBtn','volume','quality','nowPlaying','playerTitle','recentTracks','visualizer','player','playerStatus','waveHeader','wavePlayer'];
+    var ids = ['audio','fullBtn','playBtn','muteBtn','volume','quality','nowPlaying','playerTitle','recentTracks','visualizer','clubViz','clubNow','player','playerStatus','waveHeader','wavePlayer','waveClub'];
     for(var i=0;i<ids.length;i++){
       assert(document.querySelectorAll('#'+ids[i]).length === 1, 'duplicate or missing id: '+ids[i]);
     }
   }
   runSelfTests();
 
-  // ===== Recent Tracks (server time preferred; fallback keeps time as "--:--") =====
-  var STORAGE_KEY = 'abf_recent_tracks_v2';
-  var recentHistory = []; // [{title, time}]
+  // ===== Recent Tracks =====
+  var STORAGE_KEY = 'abf_recent_tracks_v3';
+  var recentHistory = [];
   var lastTitle = '';
   var hasBootstrappedHistory = false;
-  var seenFirstTitle = false; // when played.html is blocked, build history only on title changes
+  var seenFirstTitle = false;
 
   function escapeHtml(s){
     return String(s)
@@ -541,7 +715,6 @@
     if(!title) return;
     if(title === lastTitle) return;
 
-    // Keep existing time if we already know it
     var existing = null;
     for(var i=0;i<recentHistory.length;i++){
       if(recentHistory[i].title === title){ existing = recentHistory[i]; break; }
@@ -564,17 +737,27 @@
   // ===== Canvas: crisp on retina =====
   function resizeCanvas(){
     var dpr = window.devicePixelRatio || 1;
+
+    // Main player viz
     var rect = canvas.getBoundingClientRect();
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Club screen viz
+    if(clubCanvas && clubC){
+      var r2 = clubCanvas.getBoundingClientRect();
+      clubCanvas.width = Math.max(1, Math.floor(r2.width * dpr));
+      clubCanvas.height = Math.max(1, Math.floor(r2.height * dpr));
+      clubC.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
   }
 
   // ===== Audio setup =====
   audio.crossOrigin = 'anonymous';
   audio.preload = 'none';
   audio.muted = false;
-  audio.volume = 1; // keep element at unity; we control volume via WebAudio gain when active
+  audio.volume = 1;
   audio.src = select.value;
   setStatus('READY');
 
@@ -583,11 +766,16 @@
     else { playBtn.textContent='▶'; playBtn.classList.remove('playing'); }
   }
 
-  // ===== WebAudio visualizer + beat sync (sound routed through WebAudio when available) =====
+  // ===== WebAudio (sound routed through WebAudio when available) =====
   var ctx = null;
   var analyser = null;
   var srcNode = null;
   var masterGain = null;
+
+  // Kick detection state
+  var kickEnv = 0;
+  var kickHold = 0;
+  var kickThreshold = 0.16;
 
   function initCtx(){
     if(ctx) return;
@@ -596,8 +784,6 @@
     analyser.fftSize = 1024;
 
     try{
-      // IMPORTANT: once we call createMediaElementSource(), the element output is routed to WebAudio.
-      // So we MUST connect to destination to hear sound.
       srcNode = ctx.createMediaElementSource(audio);
       masterGain = ctx.createGain();
       masterGain.gain.value = parseFloat(volume.value) || 0.8;
@@ -606,7 +792,7 @@
       srcNode.connect(masterGain);
       masterGain.connect(ctx.destination);
     } catch(e){
-      console.warn('WebAudio disabled (likely CORS/codec). Playback will use native element output.', e);
+      console.warn('WebAudio disabled. Playback will use native element output.', e);
       analyser = null;
       srcNode = null;
       masterGain = null;
@@ -655,17 +841,23 @@
   function setWavePath(d){
     if(waveHeaderEl) waveHeaderEl.setAttribute('d', d);
     if(wavePlayerEl) wavePlayerEl.setAttribute('d', d);
+    if(waveClubEl) waveClubEl.setAttribute('d', d);
   }
 
   function draw(){
     requestAnimationFrame(draw);
 
-    // Fallback waveform when WebAudio isn't available
+    var tNow = performance.now() / 1000;
+
     if(!analyser){
       root.style.setProperty('--beat', '0');
+      root.style.setProperty('--kick', '0');
+      root.style.setProperty('--hue', String((tNow * 8) % 360));
+
       c.clearRect(0,0,canvas.width,canvas.height);
-      var t = performance.now() / 1000;
-      setWavePath(buildSyntheticWave(t, 10));
+      if(clubC && clubCanvas) clubC.clearRect(0,0,clubCanvas.width,clubCanvas.height);
+
+      setWavePath(buildSyntheticWave(tNow, 10));
       return;
     }
 
@@ -678,15 +870,33 @@
     for(var i=0;i<freq.length;i++) sum += freq[i];
     var avg = sum / freq.length;
 
+    // Beat (overall energy)
     var beat = clamp01(avg / 255);
     beat = clamp01(Math.pow(beat, 1.35));
     root.style.setProperty('--beat', String(beat));
+
+    // Kick (bass transient)
+    var bassSum = 0;
+    var bassBins = Math.min(8, freq.length);
+    for(var bi=0; bi<bassBins; bi++) bassSum += freq[bi];
+    var bass = bassSum / (bassBins * 255);
+
+    kickEnv = Math.max(bass, kickEnv * 0.86);
+    if(bass > kickThreshold && bass > kickHold) kickHold = bass;
+    kickHold *= 0.90;
+
+    var kick = clamp01((kickHold - kickThreshold) / (1 - kickThreshold));
+    root.style.setProperty('--kick', String(kick));
+
+    // Color drift (time + energy + kick spikes)
+    var hue = (tNow * 10 + beat * 90 + kick * 140) % 360;
+    root.style.setProperty('--hue', String(hue));
 
     // Waveform SVG
     var amp = 8 + beat * 18;
     setWavePath(buildWavePath(td, amp));
 
-    // Visualizer bars
+    // Main visualizer bars
     c.clearRect(0,0,canvas.width,canvas.height);
     var barW = 4;
     var gap = 2;
@@ -696,14 +906,78 @@
     for(var j=0;j<freq.length;j++){
       var v = freq[j];
       var h = v / 3;
-      c.fillStyle = '#3ccfff';
+      c.fillStyle = 'hsl(' + hue + ', 95%, 62%)';
       c.fillRect(baseX, (ch - h), barW, h);
       baseX += (barW + gap);
       if(baseX > cw) break;
     }
+
+    // Club screen bars (bigger)
+    if(clubC && clubCanvas){
+      clubC.clearRect(0,0,clubCanvas.width,clubCanvas.height);
+      var ch2 = clubCanvas.getBoundingClientRect().height;
+      var cw2 = clubCanvas.getBoundingClientRect().width;
+      var bw = 8;
+      var gp = 3;
+      var x = 0;
+      for(var k=0;k<freq.length;k++){
+        var vv = freq[k];
+        var hh = (vv / 255) * (ch2 * 0.95);
+        clubC.fillStyle = 'hsla(' + hue + ', 95%, ' + (55 + (k%2)*8) + '%, 0.92)';
+        clubC.fillRect(x, (ch2 - hh), bw, hh);
+        x += (bw + gp);
+        if(x > cw2) break;
+      }
+    }
   }
 
-  // ===== Play/Pause (mobile-safe) =====
+  // ===== Fullscreen / Club Screen =====
+  function isFullscreen(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  function setClubScreen(on){
+    document.body.classList.toggle('club-screen', !!on);
+    setTimeout(function(){
+      updatePlayerHeight();
+      resizeCanvas();
+    }, 120);
+  }
+
+  function requestFS(el){
+    if(el.requestFullscreen) return el.requestFullscreen();
+    if(el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+    return Promise.reject(new Error('Fullscreen not supported'));
+  }
+
+  function exitFS(){
+    if(document.exitFullscreen) return document.exitFullscreen();
+    if(document.webkitExitFullscreen) return document.webkitExitFullscreen();
+    return Promise.resolve();
+  }
+
+  function toggleClubScreen(){
+    var rootEl = document.documentElement;
+    if(isFullscreen()){
+      exitFS().finally(function(){ setClubScreen(false); });
+      return;
+    }
+    requestFS(rootEl)
+      .then(function(){ setClubScreen(true); })
+      .catch(function(){
+        // If fullscreen is blocked, still enable the visual club mode (windowed)
+        setClubScreen(true);
+      });
+  }
+
+  if(fullBtn){
+    fullBtn.onclick = function(){ toggleClubScreen(); };
+  }
+
+  document.addEventListener('fullscreenchange', function(){ setClubScreen(isFullscreen()); });
+  document.addEventListener('webkitfullscreenchange', function(){ setClubScreen(isFullscreen()); });
+
+  // ===== Play/Pause =====
   function togglePlay(){
     audio.muted = false;
     if(masterGain){
@@ -755,12 +1029,8 @@
   volume.oninput = function(){
     var v = parseFloat(volume.value);
     if(isNaN(v)) v = 0;
-
-    if(masterGain){
-      masterGain.gain.value = v;
-    } else {
-      audio.volume = v;
-    }
+    if(masterGain) masterGain.gain.value = v;
+    else audio.volume = v;
   };
 
   select.onchange = function(){
@@ -774,6 +1044,7 @@
     audio.load();
 
     root.style.setProperty('--beat', '0');
+    root.style.setProperty('--kick', '0');
     setStatus('SWITCHING');
 
     if(wasPlaying) togglePlay();
@@ -782,18 +1053,10 @@
 
   // Playback lifecycle hints
   audio.addEventListener('play', function(){ setPlayingUI(true); setStatus('CONNECTING'); });
-  audio.addEventListener('playing', function(){
-    setStatus('LIVE');
-    console.log('AUDIO PLAYING', {
-      muted: audio.muted,
-      volume: audio.volume,
-      currentTime: audio.currentTime,
-      readyState: audio.readyState
-    });
-  });
+  audio.addEventListener('playing', function(){ setStatus('LIVE'); });
   audio.addEventListener('waiting', function(){ setStatus('BUFFERING'); });
   audio.addEventListener('stalled', function(){ setStatus('STALLED'); });
-  audio.addEventListener('pause', function(){ setPlayingUI(false); root.style.setProperty('--beat','0'); setStatus('PAUSED'); });
+  audio.addEventListener('pause', function(){ setPlayingUI(false); root.style.setProperty('--beat','0'); root.style.setProperty('--kick','0'); setStatus('PAUSED'); });
   audio.addEventListener('ended', function(){ setStatus('ENDED'); });
   audio.addEventListener('error', function(){
     var code = audio.error ? audio.error.code : 0;
@@ -872,6 +1135,8 @@
         var title = s.title || s.stream_title || s.server_name || 'Live – ABF CLUB RADIO';
         nowPlayingEl.textContent = title;
         playerTitleEl.textContent = title;
+        document.title = title + ' | ABF CLUB RADIO – Official clubbing webradio from RadioABF.com';
+        if(clubNowEl) clubNowEl.textContent = title;
 
         if(hasBootstrappedHistory){
           pushRecent(title);
@@ -889,6 +1154,8 @@
       .catch(function(){
         nowPlayingEl.textContent = 'Live – ABF CLUB RADIO';
         playerTitleEl.textContent = 'Live – ABF CLUB RADIO';
+        document.title = 'ABF CLUB RADIO – Official clubbing webradio from RadioABF.com';
+        if(clubNowEl) clubNowEl.textContent = 'Live – ABF CLUB RADIO';
         renderRecent(recentHistory);
       });
   }
@@ -916,9 +1183,48 @@
     var ro = new ResizeObserver(function(){ initLayout(); });
     ro.observe(document.getElementById('player'));
     ro.observe(canvas);
+    if(clubCanvas) ro.observe(clubCanvas);
   } catch(e) {}
 
   draw();
+
+  // ===== Dynamic Favicon (beat-synced) =====
+  var favLink = document.getElementById('dynamicFavicon');
+  var favCanvas = document.createElement('canvas');
+  favCanvas.width = 32;
+  favCanvas.height = 32;
+  var favCtx = favCanvas.getContext('2d');
+
+  function updateFavicon(){
+    var beat = parseFloat(getComputedStyle(root).getPropertyValue('--beat')) || 0;
+    var hue = parseFloat(getComputedStyle(root).getPropertyValue('--hue')) || 200;
+
+    favCtx.clearRect(0,0,32,32);
+
+    // background
+    favCtx.fillStyle = 'rgba(5,7,12,0.95)';
+    favCtx.fillRect(0,0,32,32);
+
+    // glow circle
+    var r = 8 + beat * 6;
+    favCtx.beginPath();
+    favCtx.arc(16,16,r,0,Math.PI*2);
+    favCtx.fillStyle = 'hsla(' + hue + ',100%,60%,0.9)';
+    favCtx.shadowColor = 'hsla(' + hue + ',100%,60%,0.9)';
+    favCtx.shadowBlur = 10 + beat * 12;
+    favCtx.fill();
+
+    // inner pulse
+    favCtx.shadowBlur = 0;
+    favCtx.beginPath();
+    favCtx.arc(16,16,3 + beat * 2,0,Math.PI*2);
+    favCtx.fillStyle = '#ffffff';
+    favCtx.fill();
+
+    favLink.href = favCanvas.toDataURL('image/png');
+  }
+
+  setInterval(updateFavicon, 250);
 
   fetchPlayedHistory().finally(function(){
     fetchIcecastMetadata();
@@ -927,7 +1233,7 @@
     setTimeout(function(){
       if(!audio.paused && audio.currentTime === 0){
         console.warn('No playback progress detected; switching to SD MP3 as fallback.');
-        select.selectedIndex = 1; // SD MP3 128k
+        select.selectedIndex = 1;
         select.onchange();
       }
     }, 2500);

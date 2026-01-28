@@ -29,7 +29,7 @@
       color:var(--text);
       min-height:100vh;
       overflow-x:hidden;
-      /* The spacer handles the fixed player height */
+      /* Spacer element handles the fixed player height */
       padding-bottom: env(safe-area-inset-bottom);
     }
 
@@ -95,6 +95,7 @@
         0 20px 60px rgba(0,0,0,.55),
         0 0 40px rgba(60,207,255,.06);
       backdrop-filter: blur(10px);
+      transition: .25s;
     }
 
     section:hover{
@@ -104,7 +105,6 @@
         0 26px 70px rgba(0,0,0,.62),
         0 0 55px rgba(60,207,255,.10);
       transform: translateY(-1px);
-      transition: .25s;
     }
 
     section h2{
@@ -326,6 +326,13 @@
     }
     .player-footer a{color:var(--neon-blue);text-decoration:none}
 
+    .player-status{
+      margin-top:4px;
+      opacity:.75;
+      font-size:.6rem;
+      letter-spacing:1px;
+    }
+
     @media(max-width:700px){
       header{padding:46px 16px 32px}
       .logo-wrap{width:150px;margin-bottom:18px}
@@ -352,8 +359,6 @@
       <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(60,207,255,.25)" stroke-width="2" />
       <circle class="logo-ring" cx="100" cy="100" r="74" fill="none" stroke="url(#lgHeader)" stroke-width="8" stroke-linecap="round" />
       <path id="waveHeader" class="waveform" d="M40 100 L160 100" />
-      <path id="waveHeader" fill="none" stroke="#3ccfff" stroke-width="2" stroke-linecap="round" opacity="0.85" />
-      
     </svg>
   </div>
 
@@ -399,8 +404,6 @@
         <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(60,207,255,.25)" stroke-width="2" />
         <circle class="logo-ring" cx="100" cy="100" r="74" fill="none" stroke="url(#lgPlayer)" stroke-width="8" stroke-linecap="round" />
         <path id="wavePlayer" class="waveform" d="M40 100 L160 100" />
-        <path id="wavePlayer" fill="none" stroke="#3ccfff" stroke-width="2" stroke-linecap="round" opacity="0.9" />
-        
       </svg>
 
       <div class="player-track">
@@ -430,10 +433,11 @@
   <canvas id="visualizer"></canvas>
 
   <div class="player-footer">
-    © ABF CLUB RADIO – A <a href="https://www.radioabf.com" target="_blank" rel="noopener">RadioABF.com</a> Clubbing Experience
+    <div>© ABF CLUB RADIO – A <a href="https://www.radioabf.com" target="_blank" rel="noopener">RadioABF.com</a> Clubbing Experience</div>
+    <div id="playerStatus" class="player-status">READY</div>
   </div>
 
-  <audio id="audio" playsinline preload="none"></audio>
+  <audio id="audio" playsinline preload="none" crossorigin="anonymous"></audio>
 </div>
 
 <script>
@@ -448,20 +452,23 @@
   var playerTitleEl = document.getElementById('playerTitle');
   var recentTracksEl = document.getElementById('recentTracks');
   var canvas = document.getElementById('visualizer');
-  var waveHeader = document.getElementById('waveHeader');
-  var wavePlayer = document.getElementById('wavePlayer');
   var c = canvas.getContext('2d');
 
-  // Waveform SVG elements
+  // SVG waveform paths (unique ids)
   var waveHeaderEl = document.getElementById('waveHeader');
   var wavePlayerEl = document.getElementById('wavePlayer');
+
+  // Status
+  var statusEl = document.getElementById('playerStatus');
+  function setStatus(msg){
+    if(statusEl) statusEl.textContent = String(msg || '').toUpperCase();
+  }
 
   // ===== Layout helper: ensure full scroll with fixed player =====
   function updatePlayerHeight(){
     var p = document.getElementById('player');
     if(!p) return;
-    // Include footer + glow buffer
-    var h = p.offsetHeight + 24;
+    var h = p.offsetHeight + 24; // include glow buffer
     document.documentElement.style.setProperty('--player-h', h + 'px');
   }
 
@@ -471,19 +478,17 @@
     assert(!!audio, 'audio element missing');
     assert(!!playBtn && !!muteBtn && !!volume && !!select, 'player controls missing');
     assert(!!nowPlayingEl && !!playerTitleEl && !!recentTracksEl, 'metadata elements missing');
+    assert(!!waveHeaderEl && !!wavePlayerEl, 'waveform svg path missing');
 
-    var ids = ['audio','playBtn','muteBtn','volume','quality','nowPlaying','playerTitle','recentTracks','visualizer','player'];
+    var ids = ['audio','playBtn','muteBtn','volume','quality','nowPlaying','playerTitle','recentTracks','visualizer','player','playerStatus','waveHeader','wavePlayer'];
     for(var i=0;i<ids.length;i++){
       assert(document.querySelectorAll('#'+ids[i]).length === 1, 'duplicate or missing id: '+ids[i]);
     }
-
-    assert(typeof updatePlayerHeight === 'function', 'updatePlayerHeight missing');
-    assert(!!waveHeaderEl && !!wavePlayerEl, 'waveform svg path missing');
   }
   runSelfTests();
 
   // ===== Recent Tracks (server time preferred; fallback keeps time as "--:--") =====
-  var STORAGE_KEY = 'abf_recent_tracks_v1';
+  var STORAGE_KEY = 'abf_recent_tracks_v2';
   var recentHistory = []; // [{title, time}]
   var lastTitle = '';
   var hasBootstrappedHistory = false;
@@ -566,34 +571,45 @@
   }
 
   // ===== Audio setup =====
+  audio.crossOrigin = 'anonymous';
+  audio.preload = 'none';
+  audio.muted = false;
+  audio.volume = 1; // keep element at unity; we control volume via WebAudio gain when active
   audio.src = select.value;
-  audio.volume = volume.value;
+  setStatus('READY');
 
   function setPlayingUI(isPlaying){
     if(isPlaying){ playBtn.textContent='⏸'; playBtn.classList.add('playing'); }
     else { playBtn.textContent='▶'; playBtn.classList.remove('playing'); }
   }
 
-  // ===== WebAudio visualizer + beat sync =====
+  // ===== WebAudio visualizer + beat sync (sound routed through WebAudio when available) =====
   var ctx = null;
   var analyser = null;
   var srcNode = null;
+  var masterGain = null;
 
   function initCtx(){
     if(ctx) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = ctx.createAnalyser();
-    analyser.fftSize = 64;
+    analyser.fftSize = 1024;
 
-    // If CORS blocks WebAudio on the stream, we keep audio playback and disable visualizer/beat.
     try{
+      // IMPORTANT: once we call createMediaElementSource(), the element output is routed to WebAudio.
+      // So we MUST connect to destination to hear sound.
       srcNode = ctx.createMediaElementSource(audio);
+      masterGain = ctx.createGain();
+      masterGain.gain.value = parseFloat(volume.value) || 0.8;
+
       srcNode.connect(analyser);
-      analyser.connect(ctx.destination);
+      srcNode.connect(masterGain);
+      masterGain.connect(ctx.destination);
     } catch(e){
-      console.warn('WebAudio disabled for this stream (likely CORS). Audio will still play; visualizer disabled.', e);
+      console.warn('WebAudio disabled (likely CORS/codec). Playback will use native element output.', e);
       analyser = null;
       srcNode = null;
+      masterGain = null;
     }
   }
 
@@ -601,7 +617,6 @@
 
   // ===== SVG waveform helpers =====
   function buildWavePath(samples, amp){
-    // viewBox is 200x200, draw between x=40..160 around y=100
     var x0 = 40, x1 = 160, y0 = 100;
     var n = samples.length;
     var step = Math.max(1, Math.floor(n / 56));
@@ -609,8 +624,8 @@
     var pts = [];
     var idx = 0;
     for(var i=0;i<n;i+=step){
-      var v = samples[i]; // 0..255
-      var t = (v - 128) / 128; // -1..1
+      var v = samples[i];
+      var t = (v - 128) / 128;
       var x = x0 + (idx / 55) * span;
       var y = y0 + t * amp;
       pts.push([x,y]);
@@ -619,9 +634,7 @@
     }
     if(!pts.length) return 'M40 100 L160 100';
     var d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
-    for(var j=1;j<pts.length;j++){
-      d += ' L' + pts[j][0].toFixed(1) + ' ' + pts[j][1].toFixed(1);
-    }
+    for(var j=1;j<pts.length;j++) d += ' L' + pts[j][0].toFixed(1) + ' ' + pts[j][1].toFixed(1);
     return d;
   }
 
@@ -644,76 +657,61 @@
     if(wavePlayerEl) wavePlayerEl.setAttribute('d', d);
   }
 
-  function polarWavePath(data, cx, cy, r, amp){
-    var len = data.length;
-    var d = '';
-    for(var i=0;i<len;i++){
-      var a = (i/len) * Math.PI * 2;
-      var v = (data[i] - 128) / 128; // -1..1
-      var rr = r + v * amp;
-      var x = cx + Math.cos(a) * rr;
-      var y = cy + Math.sin(a) * rr;
-      d += (i===0 ? 'M':'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
-    }
-    return d + 'Z';
-  }
-
   function draw(){
     requestAnimationFrame(draw);
 
+    // Fallback waveform when WebAudio isn't available
     if(!analyser){
       root.style.setProperty('--beat', '0');
       c.clearRect(0,0,canvas.width,canvas.height);
-      // Keep a tasteful animated waveform even when WebAudio is blocked (CORS)
       var t = performance.now() / 1000;
       setWavePath(buildSyntheticWave(t, 10));
       return;
     }
 
-    var data = new Uint8Array(analyser.frequencyBinCount);
-    var tdata = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(tdata);
-    analyser.getByteFrequencyData(data);
-
-    // Time-domain waveform for the SVG waveform
+    var freq = new Uint8Array(analyser.frequencyBinCount);
     var td = new Uint8Array(analyser.fftSize);
+    analyser.getByteFrequencyData(freq);
     analyser.getByteTimeDomainData(td);
 
     var sum = 0;
-    for(var i=0;i<data.length;i++) sum += data[i];
-    var avg = sum / data.length; // 0..255
+    for(var i=0;i<freq.length;i++) sum += freq[i];
+    var avg = sum / freq.length;
 
     var beat = clamp01(avg / 255);
     beat = clamp01(Math.pow(beat, 1.35));
     root.style.setProperty('--beat', String(beat));
 
-    // Waveform SVG (amplitude follows beat)
+    // Waveform SVG
     var amp = 8 + beat * 18;
     setWavePath(buildWavePath(td, amp));
 
-    // circular waveform (SVG)
-    if(waveHeader){ waveHeader.setAttribute('d', polarWavePath(tdata, 100, 100, 48, 10)); }
-    if(wavePlayer){ wavePlayer.setAttribute('d', polarWavePath(tdata, 100, 100, 48, 8)); }
-
-    // bars
+    // Visualizer bars
     c.clearRect(0,0,canvas.width,canvas.height);
     var barW = 4;
     var gap = 2;
     var baseX = 0;
-    // Use CSS-set height (in CSS px); on retina we draw in CSS coords via setTransform.
     var ch = canvas.getBoundingClientRect().height;
-    for(var j=0;j<data.length;j++){
-      var v = data[j];
+    var cw = canvas.getBoundingClientRect().width;
+    for(var j=0;j<freq.length;j++){
+      var v = freq[j];
       var h = v / 3;
       c.fillStyle = '#3ccfff';
       c.fillRect(baseX, (ch - h), barW, h);
       baseX += (barW + gap);
-      if(baseX > canvas.getBoundingClientRect().width) break;
+      if(baseX > cw) break;
     }
   }
 
-  // ===== Play/Pause (mobile-safe: resume AudioContext in the click handler) =====
+  // ===== Play/Pause (mobile-safe) =====
   function togglePlay(){
+    audio.muted = false;
+    if(masterGain){
+      masterGain.gain.value = parseFloat(volume.value) || 0.8;
+    } else {
+      audio.volume = parseFloat(volume.value) || 0.8;
+    }
+
     if(audio.paused){
       try{ initCtx(); } catch(e){}
 
@@ -722,43 +720,86 @@
       else p = Promise.resolve();
 
       return p.then(function(){
+        setStatus('CONNECTING');
         return audio.play();
       }).then(function(){
         setPlayingUI(true);
       }).catch(function(err){
+        setStatus('BLOCKED');
         console.warn('Play blocked by browser policy. Tap Play again.', err);
       });
     }
 
     audio.pause();
     setPlayingUI(false);
+    setStatus('PAUSED');
     return Promise.resolve();
   }
 
   playBtn.onclick = function(){ togglePlay(); };
 
   muteBtn.onclick = function(){
+    if(masterGain){
+      var isAudible = masterGain.gain.value > 0.0001;
+      masterGain.gain.value = isAudible ? 0 : (parseFloat(volume.value) || 0.8);
+      muteBtn.textContent = (masterGain.gain.value === 0) ? '🔇' : '🔊';
+      setStatus((masterGain.gain.value === 0) ? 'MUTED' : 'LIVE');
+      return;
+    }
+
     audio.muted = !audio.muted;
     muteBtn.textContent = audio.muted ? '🔇' : '🔊';
+    setStatus(audio.muted ? 'MUTED' : 'LIVE');
   };
 
-  volume.oninput = function(){ audio.volume = volume.value; };
+  volume.oninput = function(){
+    var v = parseFloat(volume.value);
+    if(isNaN(v)) v = 0;
+
+    if(masterGain){
+      masterGain.gain.value = v;
+    } else {
+      audio.volume = v;
+    }
+  };
 
   select.onchange = function(){
     updatePlayerHeight();
     var wasPlaying = !audio.paused;
     audio.pause();
-    audio.src = select.value;
+
+    var base = select.value;
+    var bust = base + (base.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+    audio.src = bust;
     audio.load();
 
     root.style.setProperty('--beat', '0');
+    setStatus('SWITCHING');
 
     if(wasPlaying) togglePlay();
     else setPlayingUI(false);
   };
 
-  audio.addEventListener('play', function(){ setPlayingUI(true); });
-  audio.addEventListener('pause', function(){ setPlayingUI(false); root.style.setProperty('--beat','0'); });
+  // Playback lifecycle hints
+  audio.addEventListener('play', function(){ setPlayingUI(true); setStatus('CONNECTING'); });
+  audio.addEventListener('playing', function(){
+    setStatus('LIVE');
+    console.log('AUDIO PLAYING', {
+      muted: audio.muted,
+      volume: audio.volume,
+      currentTime: audio.currentTime,
+      readyState: audio.readyState
+    });
+  });
+  audio.addEventListener('waiting', function(){ setStatus('BUFFERING'); });
+  audio.addEventListener('stalled', function(){ setStatus('STALLED'); });
+  audio.addEventListener('pause', function(){ setPlayingUI(false); root.style.setProperty('--beat','0'); setStatus('PAUSED'); });
+  audio.addEventListener('ended', function(){ setStatus('ENDED'); });
+  audio.addEventListener('error', function(){
+    var code = audio.error ? audio.error.code : 0;
+    setStatus('ERROR ' + code);
+    console.warn('Audio error', audio.error);
+  });
 
   // ===== Icecast + played.html =====
   var ICECAST_STATUS_URL = 'https://play.radioabf.com:2850/status-json.xsl';
@@ -832,9 +873,6 @@
         nowPlayingEl.textContent = title;
         playerTitleEl.textContent = title;
 
-        // Recent tracks strategy:
-        // 1) Prefer played.html (hasBootstrappedHistory=true) with real timestamps
-        // 2) If played.html is blocked, build history only when the title CHANGES (time stays "--:--")
         if(hasBootstrappedHistory){
           pushRecent(title);
           renderRecent(recentHistory);
@@ -864,7 +902,6 @@
   window.addEventListener('load', initLayout);
   window.addEventListener('resize', initLayout);
 
-  // Font loading / mobile browser UI bars can change sizes after the initial load
   try{
     if(document.fonts && document.fonts.ready){
       document.fonts.ready.then(function(){ initLayout(); });
@@ -881,16 +918,21 @@
     ro.observe(canvas);
   } catch(e) {}
 
-  // Start drawing loop
   draw();
 
-  // Bootstrap: prefer played.html (real timestamps). Then start now-playing refresh.
   fetchPlayedHistory().finally(function(){
     fetchIcecastMetadata();
     setInterval(fetchIcecastMetadata, 15000);
+
+    setTimeout(function(){
+      if(!audio.paused && audio.currentTime === 0){
+        console.warn('No playback progress detected; switching to SD MP3 as fallback.');
+        select.selectedIndex = 1; // SD MP3 128k
+        select.onchange();
+      }
+    }, 2500);
   });
 
-  // Periodic refresh of played history (keeps timestamps accurate when available)
   setInterval(function(){ fetchPlayedHistory(); }, 30000);
 </script>
 
